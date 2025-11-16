@@ -7,6 +7,7 @@
 
 #define DEFAULT_MAX_S 60
 #define DECLICK_TIME_S 0.005
+#define STATUS_UPDATE_MS 100
 
 typedef enum {
     LOOPER_STOPPED = 0,
@@ -30,15 +31,40 @@ typedef struct _looper {
     size_t fade_samples;
     size_t fade_pos;
     bool fading;
-    bool fade_in; // true if faiding in, false if fading out
+    bool fade_in; // true if fading in, false if fading out
 
     t_outlet *status_out;
-    // TODO add length outlet - this probably should respond to a bang or "length" message
 
     int counter;
+
+    t_clock *status_clock;
+    t_looper_state prev_reported_state;
 } t_looper;
 
 static t_class *looper_class;
+
+void report_state(t_looper *x, t_looper_state state) {
+    if (state == LOOPER_RECORDING || state == LOOPER_PLAYING) {
+        // Compose list: symbol + time remaining
+        t_atom out_list[2];
+        t_symbol *state_sym = gensym(state == LOOPER_RECORDING ? "recording" : "playing");
+        SETSYMBOL(&out_list[0], state_sym);
+        t_float time_remaining = (t_float)(x->loop_end - x->pos) / (t_float)sys_getsr();
+        SETFLOAT(&out_list[1], time_remaining);
+        outlet_list(x->status_out, &s_list, 2, out_list);
+        x->prev_reported_state = state;
+    } else {
+        if (x->prev_reported_state != LOOPER_STOPPED) {
+            outlet_symbol(x->status_out, gensym("stopped"));
+            x->prev_reported_state = state;
+        }
+    }
+}
+
+void looper_tick(t_looper *x) {
+    report_state(x, x->state);
+    clock_delay(x->status_clock, STATUS_UPDATE_MS);
+}
 
 void *looper_new(t_floatarg f) {
     t_looper *x = (t_looper *)pd_new(looper_class);
@@ -71,6 +97,10 @@ void *looper_new(t_floatarg f) {
 
     x->counter = 0;
 
+    x->status_clock = clock_new(x, (t_method)looper_tick);
+    // schedule first tick
+    clock_delay(x->status_clock, STATUS_UPDATE_MS);
+
     inlet_new(&x->x_obj, &x->x_obj.ob_pd, &s_signal, &s_signal); // right inlet
     outlet_new(&x->x_obj, &s_signal); // left outlet
     outlet_new(&x->x_obj, &s_signal); // right outlet
@@ -82,16 +112,7 @@ void *looper_new(t_floatarg f) {
 void looper_free(t_looper *x) {
     if (x->bufferL) freebytes(x->bufferL, x->buffer_size * sizeof(t_sample));
     if (x->bufferR) freebytes(x->bufferR, x->buffer_size * sizeof(t_sample));
-}
-
-void report_state(t_looper *x, t_looper_state state) {
-    t_symbol *state_sym = gensym("stopped");
-    if (state == LOOPER_RECORDING) {
-        state_sym = gensym("recording");
-    } else if (state == LOOPER_PLAYING) {
-        state_sym = gensym("playing");
-    }
-    outlet_symbol(x->status_out, state_sym);
+    clock_free(x->status_clock);
 }
 
 void transition_state(t_looper *x, t_looper_state new_state) {
