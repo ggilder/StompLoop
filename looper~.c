@@ -226,15 +226,15 @@ t_int *looper_perform(t_int *w) {
 
     x->counter += n;
     // Debug logging every 2 seconds
-    if (x->counter >= 2 * sys_getsr()) {
-        logpost(x, PD_DEBUG, "Hello from looper, state=%d, pos=%zu, loop_end=%zu, loop_end_set=%d",
-                x->state, x->pos, x->loop_end, x->loop_end_set);
-        if (x->fading) {
-            logpost(x, PD_DEBUG, "  fading %s, fade_pos=%zu/%zu, target_state=%d",
-                    x->fade_in ? "in" : "out", x->fade_pos, x->fade_samples, x->target_state);
-        }
-        x->counter = 0;
-    }
+    /* if (x->counter >= 2 * sys_getsr()) { */
+    /*     logpost(x, PD_DEBUG, "Hello from looper, state=%d, pos=%zu, loop_end=%zu, loop_end_set=%d", */
+    /*             x->state, x->pos, x->loop_end, x->loop_end_set); */
+    /*     if (x->fading) { */
+    /*         logpost(x, PD_DEBUG, "  fading %s, fade_pos=%zu/%zu, target_state=%d", */
+    /*                 x->fade_in ? "in" : "out", x->fade_pos, x->fade_samples, x->target_state); */
+    /*     } */
+    /*     x->counter = 0; */
+    /* } */
 
     for (int i = 0; i < n; i++) {
         t_sample play_gain = 1.0;
