@@ -1,12 +1,12 @@
-#N canvas 900 112 961 865 12;
-#X obj 33 16 r knob1;
-#X floatatom 33 38 5 0 0 0 - - - 0;
-#X floatatom 69 672 5 0 0 0 - - - 0;
-#X floatatom 129 672 5 0 0 0 - - - 0;
-#X floatatom 189 672 5 0 0 0 - - - 0;
-#X obj 69 650 r knob2;
-#X obj 129 650 r knob3;
-#X obj 189 650 r knob4;
+#N canvas 874 79 961 864 12;
+#X obj 24 564 r knob1;
+#X floatatom 24 586 5 0 0 0 - - - 0;
+#X floatatom 33 729 5 0 0 0 - - - 0;
+#X floatatom 93 729 5 0 0 0 - - - 0;
+#X floatatom 153 729 5 0 0 0 - - - 0;
+#X obj 33 707 r knob2;
+#X obj 93 707 r knob3;
+#X obj 153 707 r knob4;
 #X obj 33 97 r aux;
 #X obj 76 97 r fs;
 #X obj 177 35 r notes;
@@ -55,7 +55,7 @@
 #X obj 223 383 abs;
 #X msg 223 407 \$1 20;
 #X obj 223 429 line~;
-#X obj 33 61 s \$0-volume;
+#X obj 24 660 s \$0-volume;
 #X obj 43 293 r \$0-volume;
 #X obj 471 587 r \$0-volume;
 #X obj 378 550 r \$0-mute;
@@ -104,8 +104,10 @@
 #X msg 789 148 Stopped;
 #X obj 789 172 s screenLine5;
 #X obj 789 124 delay 1000;
+#X obj 24 609 klatch 1;
+#X floatatom 24 633 5 0 0 0 - - - 0;
 #X connect 0 0 1 0;
-#X connect 1 0 56 0;
+#X connect 1 0 105 0;
 #X connect 5 0 2 0;
 #X connect 6 0 3 0;
 #X connect 7 0 4 0;
@@ -207,3 +209,5 @@
 #X connect 101 4 104 0;
 #X connect 102 0 103 0;
 #X connect 104 0 102 0;
+#X connect 105 0 106 0;
+#X connect 106 0 56 0;
