@@ -216,6 +216,10 @@ void looper_clear(t_looper *x) {
     report_state(x, x->state);
 }
 
+void looper_bang(t_looper *x) {
+    report_state(x, x->state);
+}
+
 t_int *looper_perform(t_int *w) {
     t_looper *x = (t_looper *)(w[1]);
     t_sample *inL = (t_sample *)(w[2]);
@@ -332,5 +336,6 @@ void looper_tilde_setup(void) {
     class_addmethod(looper_class, (t_method)looper_start, gensym("start"), 0);
     class_addmethod(looper_class, (t_method)looper_stop, gensym("stop"), 0);
     class_addmethod(looper_class, (t_method)looper_clear, gensym("clear"), 0);
+    class_addbang(looper_class, (t_method)looper_bang);
 }
 
