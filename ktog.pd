@@ -1,4 +1,4 @@
-#N canvas 410 675 318 338 12;
+#N canvas 396 436 318 338 12;
 #X obj 88 220 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
 #X obj 108 57 unpack f f;
 #X floatatom 127 134 5 0 0 0 - - - 0;
@@ -13,6 +13,7 @@
 #X obj 200 62 i \$1;
 #X obj 127 112 ==;
 #X obj 90 292 outlet;
+#X text 22 2 note down toggles the value;
 #X connect 0 0 7 0;
 #X connect 1 0 12 0;
 #X connect 1 1 6 0;
