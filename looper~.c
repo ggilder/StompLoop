@@ -1,5 +1,4 @@
 #include "m_pd.h"
-#include <iso646.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -220,6 +219,16 @@ void looper_bang(t_looper *x) {
     report_state(x, x->state);
 }
 
+void looper_playpause(t_looper *x) {
+    if (x->state == LOOPER_PLAYING || x->state == LOOPER_RECORDING) {
+        looper_stop(x);
+    } else if (x->loop_end_set) {
+        looper_start(x);
+    } else {
+        logpost(x, PD_NORMAL, "looper playpause: no loop recorded yet, cannot start playing");
+    }
+}
+
 t_int *looper_perform(t_int *w) {
     t_looper *x = (t_looper *)(w[1]);
     t_sample *inL = (t_sample *)(w[2]);
@@ -336,6 +345,7 @@ void looper_tilde_setup(void) {
     class_addmethod(looper_class, (t_method)looper_start, gensym("start"), 0);
     class_addmethod(looper_class, (t_method)looper_stop, gensym("stop"), 0);
     class_addmethod(looper_class, (t_method)looper_clear, gensym("clear"), 0);
+    class_addmethod(looper_class, (t_method)looper_playpause, gensym("playpause"), 0);
     class_addbang(looper_class, (t_method)looper_bang);
 }
 
