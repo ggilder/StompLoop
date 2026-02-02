@@ -1,5 +1,4 @@
 #include "m_pd.h"
-#include <iso646.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -38,7 +37,6 @@ typedef struct _looper {
     int counter;
 
     t_clock *status_clock;
-    t_looper_state prev_reported_state;
 } t_looper;
 
 static t_class *looper_class;
@@ -52,12 +50,8 @@ void report_state(t_looper *x, t_looper_state state) {
         t_float time_remaining = (t_float)(x->loop_end - x->pos) / (t_float)sys_getsr();
         SETFLOAT(&out_list[1], time_remaining);
         outlet_list(x->status_out, &s_list, 2, out_list);
-        x->prev_reported_state = state;
     } else {
-        if (x->prev_reported_state != LOOPER_STOPPED) {
-            outlet_symbol(x->status_out, gensym("stopped"));
-            x->prev_reported_state = state;
-        }
+        outlet_symbol(x->status_out, gensym("stopped"));
     }
 }
 
@@ -66,9 +60,14 @@ void looper_tick(t_looper *x) {
     clock_delay(x->status_clock, STATUS_UPDATE_MS);
 }
 
-void *looper_new(t_floatarg f) {
+void *looper_new(t_symbol *s, int argc, t_atom *argv) {
+    (void)s; // unused; silence warning
     t_looper *x = (t_looper *)pd_new(looper_class);
 
+    t_float f = 0;
+    if (argc > 0 && argv[0].a_type == A_FLOAT) {
+        f = atom_getfloat(argv);
+    }
     x->buffer_size = sys_getsr() * ((f > 0) ? (size_t)f : DEFAULT_MAX_S);
     logpost(x, PD_DEBUG, "looper~: allocating %.2f seconds (%.2f MB per channel) buffer",
             (t_float)x->buffer_size / sys_getsr(),
@@ -216,6 +215,20 @@ void looper_clear(t_looper *x) {
     report_state(x, x->state);
 }
 
+void looper_bang(t_looper *x) {
+    report_state(x, x->state);
+}
+
+void looper_playpause(t_looper *x) {
+    if (x->state == LOOPER_PLAYING || x->state == LOOPER_RECORDING) {
+        looper_stop(x);
+    } else if (x->loop_end_set) {
+        looper_start(x);
+    } else {
+        logpost(x, PD_NORMAL, "looper playpause: no loop recorded yet, cannot start playing");
+    }
+}
+
 t_int *looper_perform(t_int *w) {
     t_looper *x = (t_looper *)(w[1]);
     t_sample *inL = (t_sample *)(w[2]);
@@ -324,7 +337,6 @@ void looper_tilde_setup(void) {
                              (t_method)looper_free,
                              sizeof(t_looper),
                              CLASS_DEFAULT,
-                             A_DEFFLOAT,
                              0);
 
     CLASS_MAINSIGNALIN(looper_class, t_looper, f);
@@ -332,5 +344,7 @@ void looper_tilde_setup(void) {
     class_addmethod(looper_class, (t_method)looper_start, gensym("start"), 0);
     class_addmethod(looper_class, (t_method)looper_stop, gensym("stop"), 0);
     class_addmethod(looper_class, (t_method)looper_clear, gensym("clear"), 0);
+    class_addmethod(looper_class, (t_method)looper_playpause, gensym("playpause"), 0);
+    class_addbang(looper_class, (t_method)looper_bang);
 }
 
