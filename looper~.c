@@ -337,11 +337,33 @@ t_int *looper_perform(t_int *w) {
                                          x->bufferR[i2], x->bufferR[i3], frac) * play_gain;
 
         if (x->state == LOOPER_RECORDING) {
-            // Only record at normal speed to avoid pitch/timing artifacts
-            if (fabsf(x->speed - 1.0f) < 0.001f) {
-                // Overdub: mix input with existing buffer content
+            t_float abs_speed = fabsf(x->speed);
+
+            // For normal and reverse speed, write directly without interpolation
+            if (fabsf(abs_speed - 1.0f) < 0.001f) {
                 x->bufferL[i1] = x->bufferL[i1] + (in_l * rec_gain);
                 x->bufferR[i1] = x->bufferR[i1] + (in_r * rec_gain);
+            } else {
+                // For other speeds, use write-side interpolation with gain compensation
+                // Gain compensation: at slower speeds we visit same positions multiple times
+                t_float write_gain = rec_gain / abs_speed;
+
+                // Distribute sample across neighboring positions using cubic weighting
+                // Calculate hermite basis function weights for writing
+                t_float w0 = 0.5f * frac * (frac - 1.0f) * (2.0f - frac);
+                t_float w1 = 1.0f - frac * frac * (1.5f - 0.5f * frac);
+                t_float w2 = 0.5f * frac * (1.0f + frac - frac * frac);
+                t_float w3 = 0.5f * frac * frac * (frac - 1.0f);
+
+                x->bufferL[i0] += in_l * write_gain * w0;
+                x->bufferL[i1] += in_l * write_gain * w1;
+                x->bufferL[i2] += in_l * write_gain * w2;
+                x->bufferL[i3] += in_l * write_gain * w3;
+
+                x->bufferR[i0] += in_r * write_gain * w0;
+                x->bufferR[i1] += in_r * write_gain * w1;
+                x->bufferR[i2] += in_r * write_gain * w2;
+                x->bufferR[i3] += in_r * write_gain * w3;
             }
         }
 
