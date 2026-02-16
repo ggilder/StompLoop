@@ -30,6 +30,9 @@ typedef struct _looper {
     t_float target_speed;
     t_float speed_increment;
 
+    t_sample filter_state_l;
+    t_sample filter_state_r;
+
     t_looper_state state;
     t_looper_state target_state;
     size_t fade_samples;
@@ -96,6 +99,9 @@ void *looper_new(t_symbol *s, int argc, t_atom *argv) {
     x->speed = 1.0;
     x->target_speed = 1.0;
     x->speed_increment = 0;
+
+    x->filter_state_l = 0;
+    x->filter_state_r = 0;
 
     x->state = LOOPER_STOPPED;
     x->target_state = LOOPER_STOPPED;
@@ -224,6 +230,8 @@ void looper_clear(t_looper *x) {
     x->speed = 1.0;
     x->target_speed = 1.0;
     x->speed_increment = 0;
+    x->filter_state_l = 0;
+    x->filter_state_r = 0;
     logpost(x, PD_NORMAL, "looper cleared and stopped");
     report_state(x, x->state);
 }
@@ -320,6 +328,17 @@ t_int *looper_perform(t_int *w) {
 
         t_sample in_l = inL[i];
         t_sample in_r = inR[i];
+
+        // Apply anti-aliasing filter when recording at fast speeds
+        if (x->state == LOOPER_RECORDING) {
+            t_float abs_speed = fabsf(x->speed);
+            if (abs_speed > 1.0f) {
+                // One-pole lowpass with cutoff at Nyquist/speed to prevent aliasing
+                t_float cutoff = 0.5f / abs_speed;
+                in_l = x->filter_state_l = x->filter_state_l + cutoff * (in_l - x->filter_state_l);
+                in_r = x->filter_state_r = x->filter_state_r + cutoff * (in_r - x->filter_state_r);
+            }
+        }
 
         // Get interpolated playback samples using cubic interpolation
         size_t pos_int = (size_t)x->read_pos;
