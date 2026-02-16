@@ -31,6 +31,11 @@ typedef struct _looper {
     t_float target_speed;
     t_float speed_increment;
 
+    uint64_t read_phase;       // Q32.32 fixed-point read position
+    uint64_t read_phase_inc;   // Q32.32 read phase increment
+    uint64_t write_phase;      // Q32.32 fixed-point for stable write positioning
+    uint64_t write_phase_inc;  // Q32.32 phase increment
+
     t_sample filter_state_l;
     t_sample filter_state_r;
 
@@ -103,6 +108,11 @@ void *looper_new(t_symbol *s, int argc, t_atom *argv) {
     x->target_speed = 1.0;
     x->speed_increment = 0;
 
+    x->read_phase = 0;
+    x->read_phase_inc = (uint64_t)(1.0 * 4294967296.0); // 1.0 in Q32.32
+    x->write_phase = 0;
+    x->write_phase_inc = (uint64_t)(1.0 * 4294967296.0); // 1.0 in Q32.32
+
     x->filter_state_l = 0;
     x->filter_state_r = 0;
 
@@ -145,8 +155,12 @@ void transition_state(t_looper *x, t_looper_state new_state) {
             // fade in playback
             x->fade_in = true;
         } else if (new_state == LOOPER_RECORDING) {
-            // fade in recording
+            // fade in recording, initialize write phase from read position
             x->fade_in = true;
+            x->write_phase = (uint64_t)(x->read_pos * 4294967296.0);
+            if (x->write_phase >= ((uint64_t)x->loop_end << 32)) {
+                x->write_phase = x->write_phase % ((uint64_t)x->loop_end << 32);
+            }
         } else {
             pd_error(x, "looper: invalid state transition from STOPPED to %d", new_state);
             return;
@@ -156,8 +170,12 @@ void transition_state(t_looper *x, t_looper_state new_state) {
         x->fade_in = false;
     } else if (x->state == LOOPER_PLAYING) {
         if (new_state == LOOPER_RECORDING) {
-            // fade in recording
+            // fade in recording, initialize write phase from read position
             x->fade_in = true;
+            x->write_phase = (uint64_t)(x->read_pos * 4294967296.0);
+            if (x->write_phase >= ((uint64_t)x->loop_end << 32)) {
+                x->write_phase = x->write_phase % ((uint64_t)x->loop_end << 32);
+            }
         } else if (new_state == LOOPER_STOPPED) {
             // fade out playback
             x->fade_in = false;
@@ -228,6 +246,7 @@ void looper_clear(t_looper *x) {
     memset(x->bufferL, 0, x->buffer_size * sizeof(t_sample));
     memset(x->bufferR, 0, x->buffer_size * sizeof(t_sample));
     x->read_pos = 0;
+    x->read_phase = 0;
     x->loop_end = x->buffer_size;
     x->loop_end_set = false;
     x->state = LOOPER_STOPPED;
@@ -235,6 +254,9 @@ void looper_clear(t_looper *x) {
     x->speed = 1.0;
     x->target_speed = 1.0;
     x->speed_increment = 0;
+    x->read_phase_inc = (uint64_t)(1.0 * 4294967296.0);
+    x->write_phase = 0;
+    x->write_phase_inc = (uint64_t)(1.0 * 4294967296.0);
     x->filter_state_l = 0;
     x->filter_state_r = 0;
     logpost(x, PD_NORMAL, "looper cleared and stopped");
@@ -257,9 +279,14 @@ void looper_playpause(t_looper *x) {
 
 void looper_speed(t_looper *x, t_floatarg f) {
     x->target_speed = f;
-    // Calculate increment for smooth transition over SPEED_SMOOTH_MS
-    t_float smooth_samples = (SPEED_SMOOTH_MS / 1000.0) * sys_getsr();
-    x->speed_increment = (x->target_speed - x->speed) / smooth_samples;
+    x->speed = f;  // Instant speed changes for now
+    x->speed_increment = 0;
+
+    // Update phase increments for fixed-point arithmetic
+    t_float abs_speed = fabsf(f);
+    x->read_phase_inc = (uint64_t)(abs_speed * 4294967296.0);
+    x->write_phase_inc = (uint64_t)(abs_speed * 4294967296.0);
+
     // Reset filter state on speed changes to prevent stuck filter artifacts
     x->filter_state_l = 0;
     x->filter_state_r = 0;
@@ -360,8 +387,12 @@ t_int *looper_perform(t_int *w) {
             }
 
             // Get interpolated playback samples using cubic interpolation
-            size_t pos_int = (size_t)x->read_pos;
-            t_float frac = x->read_pos - pos_int;
+            // Use fixed-point phase for stable position tracking
+            size_t pos_int = (size_t)(x->read_phase >> 32);
+            if (pos_int >= x->loop_end) pos_int = pos_int % x->loop_end;
+
+            // Extract fractional part from lower 32 bits
+            t_float frac = (t_float)(x->read_phase & 0xFFFFFFFF) / 4294967296.0f;
 
             size_t i0 = (pos_int > 0) ? pos_int - 1 : x->loop_end - 1;
             size_t i1 = pos_int;
@@ -374,32 +405,70 @@ t_int *looper_perform(t_int *w) {
                                              x->bufferR[i2], x->bufferR[i3], frac) * play_gain;
 
             if (x->state == LOOPER_RECORDING) {
+                // Use fixed-point phase for stable write positioning
+                size_t write_pos = (size_t)(x->write_phase >> 32);
+                if (write_pos >= x->loop_end) write_pos = write_pos % x->loop_end;
+
+                // Write with gain compensation for speed
                 t_float abs_speed = fabsf(x->speed);
-                size_t write_pos = (size_t)(x->read_pos + 0.5f);
-                if (write_pos >= x->loop_end) write_pos = 0;
-                t_float write_gain = rec_gain * abs_speed;
+                t_float write_gain = rec_gain * abs_speed / (t_float)OVERSAMPLE_FACTOR;
+
                 x->bufferL[write_pos] += os_in_l * write_gain;
                 x->bufferR[write_pos] += os_in_r * write_gain;
+
+                // Advance write phase (forward or backward depending on speed)
+                if (x->speed >= 0) {
+                    x->write_phase += x->write_phase_inc;
+                } else {
+                    // Reverse: subtract phase increment
+                    if (x->write_phase >= x->write_phase_inc) {
+                        x->write_phase -= x->write_phase_inc;
+                    } else {
+                        // Wrapped below zero, add loop length
+                        uint64_t loop_end_phase = (uint64_t)x->loop_end << 32;
+                        x->write_phase = loop_end_phase - (x->write_phase_inc - x->write_phase);
+                    }
+                }
+
+                // Wrap phase if needed
+                uint64_t loop_end_phase = (uint64_t)x->loop_end << 32;
+                if (x->write_phase >= loop_end_phase) {
+                    x->write_phase = x->write_phase % loop_end_phase;
+                }
             }
 
             accum_l += play_l;
             accum_r += play_r;
 
-            // Advance read position by speed (now in oversampled domain)
-            x->read_pos += x->speed;
+            // Advance read position using fixed-point phase
+            if (x->speed >= 0) {
+                x->read_phase += x->read_phase_inc;
+            } else {
+                // Reverse: subtract phase increment
+                if (x->read_phase >= x->read_phase_inc) {
+                    x->read_phase -= x->read_phase_inc;
+                } else {
+                    // Wrapped below zero, add loop length
+                    uint64_t loop_end_phase = (uint64_t)x->loop_end << 32;
+                    x->read_phase = loop_end_phase - (x->read_phase_inc - x->read_phase);
+                }
+            }
 
-            while (x->read_pos >= x->loop_end) {
-                x->read_pos -= x->loop_end;
+            // Handle wraparound with fixed-point phase
+            uint64_t loop_end_phase = (uint64_t)x->loop_end << 32;
+            if (x->read_phase >= loop_end_phase) {
+                x->read_phase = x->read_phase % loop_end_phase;
                 if (!x->loop_end_set) {
                     x->loop_end_set = true;
                     logpost(x, PD_NORMAL, "looper reached buffer end, loop end set at %.2f seconds (%zu samples at %dx)",
                             x->loop_end / (sys_getsr() * OVERSAMPLE_FACTOR), x->loop_end, OVERSAMPLE_FACTOR);
                 }
             }
-            while (x->read_pos < 0) {
-                x->read_pos += x->loop_end;
-            }
+
+            // Update float read_pos for compatibility (used in status reporting)
+            x->read_pos = (t_float)(x->read_phase >> 32) + (t_float)(x->read_phase & 0xFFFFFFFF) / 4294967296.0f;
         }
+
 
         // Downsample: box filter (average). Linear-phase; avoids speed-dependent IIR phase wobble.
         outL[i] = accum_l / (t_float)OVERSAMPLE_FACTOR;
