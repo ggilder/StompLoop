@@ -34,9 +34,6 @@ typedef struct _looper {
     t_sample filter_state_l;
     t_sample filter_state_r;
 
-    t_sample downsample_state_l;
-    t_sample downsample_state_r;
-
     t_looper_state state;
     t_looper_state target_state;
     size_t fade_samples;
@@ -108,9 +105,6 @@ void *looper_new(t_symbol *s, int argc, t_atom *argv) {
 
     x->filter_state_l = 0;
     x->filter_state_r = 0;
-
-    x->downsample_state_l = 0;
-    x->downsample_state_r = 0;
 
     x->state = LOOPER_STOPPED;
     x->target_state = LOOPER_STOPPED;
@@ -243,8 +237,6 @@ void looper_clear(t_looper *x) {
     x->speed_increment = 0;
     x->filter_state_l = 0;
     x->filter_state_r = 0;
-    x->downsample_state_l = 0;
-    x->downsample_state_r = 0;
     logpost(x, PD_NORMAL, "looper cleared and stopped");
     report_state(x, x->state);
 }
@@ -409,13 +401,9 @@ t_int *looper_perform(t_int *w) {
             }
         }
 
-        // Downsample with averaging and lowpass
-        t_sample raw_l = accum_l / (t_float)OVERSAMPLE_FACTOR;
-        t_sample raw_r = accum_r / (t_float)OVERSAMPLE_FACTOR;
-
-        t_float ds_cutoff = 0.45f;
-        outL[i] = x->downsample_state_l = x->downsample_state_l + ds_cutoff * (raw_l - x->downsample_state_l);
-        outR[i] = x->downsample_state_r = x->downsample_state_r + ds_cutoff * (raw_r - x->downsample_state_r);
+        // Downsample: box filter (average). Linear-phase; avoids speed-dependent IIR phase wobble.
+        outL[i] = accum_l / (t_float)OVERSAMPLE_FACTOR;
+        outR[i] = accum_r / (t_float)OVERSAMPLE_FACTOR;
     }
     return (w + 7);
 }
