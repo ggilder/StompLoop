@@ -314,7 +314,7 @@ t_int *looper_perform(t_int *w) {
             t_sample play_gain = 1.0;
             t_sample rec_gain = 1.0;
 
-            // Handle state transitions with fading
+            // Handle state transitions with fading (only update fade_pos on first iteration)
             if (x->fading) {
                 // Fade complete
                 if (x->fade_pos >= x->fade_samples) {
@@ -324,7 +324,7 @@ t_int *looper_perform(t_int *w) {
                 } else {
                     // Smoother fade using cosine curve
                     t_sample fade_ratio = 0.5 * (1 - cosf((t_float)x->fade_pos / (t_float)x->fade_samples * M_PI));
-                    x->fade_pos++;
+                    if (os == 0) x->fade_pos++;  // Only increment once per external sample
                     if (x->fade_in) {
                         if (x->target_state == LOOPER_RECORDING) {
                             rec_gain = fade_ratio;
