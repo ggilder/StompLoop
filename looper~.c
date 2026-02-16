@@ -255,6 +255,9 @@ void looper_speed(t_looper *x, t_floatarg f) {
     // Calculate increment for smooth transition over SPEED_SMOOTH_MS
     t_float smooth_samples = (SPEED_SMOOTH_MS / 1000.0) * sys_getsr();
     x->speed_increment = (x->target_speed - x->speed) / smooth_samples;
+    // Reset filter state on speed changes to prevent stuck filter artifacts
+    x->filter_state_l = 0;
+    x->filter_state_r = 0;
     logpost(x, PD_NORMAL, "looper speed set to %.2f", f);
 }
 
@@ -368,22 +371,15 @@ t_int *looper_perform(t_int *w) {
                 // Gain compensation: multiply by speed (slower = less gain per write, faster = more)
                 t_float write_gain = rec_gain * abs_speed;
 
-                // Distribute sample across neighboring positions using cubic weighting
-                // Calculate hermite basis function weights for writing
-                t_float w0 = 0.5f * frac * (frac - 1.0f) * (2.0f - frac);
-                t_float w1 = 1.0f - frac * frac * (1.5f - 0.5f * frac);
-                t_float w2 = 0.5f * frac * (1.0f + frac - frac * frac);
-                t_float w3 = 0.5f * frac * frac * (frac - 1.0f);
+                // Use linear interpolation for writing (more stable than cubic)
+                t_float w1 = 1.0f - frac;
+                t_float w2 = frac;
 
-                x->bufferL[i0] += in_l * write_gain * w0;
                 x->bufferL[i1] += in_l * write_gain * w1;
                 x->bufferL[i2] += in_l * write_gain * w2;
-                x->bufferL[i3] += in_l * write_gain * w3;
 
-                x->bufferR[i0] += in_r * write_gain * w0;
                 x->bufferR[i1] += in_r * write_gain * w1;
                 x->bufferR[i2] += in_r * write_gain * w2;
-                x->bufferR[i3] += in_r * write_gain * w3;
             }
         }
 
