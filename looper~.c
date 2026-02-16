@@ -280,17 +280,13 @@ void looper_playpause(t_looper *x) {
 
 void looper_speed(t_looper *x, t_floatarg f) {
     x->target_speed = f;
-    x->speed = f;  // Instant speed changes for now
-    x->speed_increment = 0;
 
-    // Update phase increments for fixed-point arithmetic
-    t_float abs_speed = fabsf(f);
-    x->read_phase_inc = (uint64_t)(abs_speed * 4294967296.0);
-    x->write_phase_inc = (uint64_t)(abs_speed * 4294967296.0);
+    // Smooth speed changes over ~50ms to reduce zipper noise
+    t_float speed_diff = f - x->speed;
+    t_float smooth_time_ms = 50.0f;
+    size_t smooth_samples = (size_t)(sys_getsr() * smooth_time_ms / 1000.0f);
+    x->speed_increment = smooth_samples > 0 ? speed_diff / smooth_samples : speed_diff;
 
-    // Reset filter state on speed changes to prevent stuck filter artifacts
-    x->filter_state_l = 0;
-    x->filter_state_r = 0;
     logpost(x, PD_NORMAL, "looper speed set to %.2f", f);
 }
 
@@ -329,6 +325,11 @@ t_int *looper_perform(t_int *w) {
                 } else {
                     x->speed += x->speed_increment;
                 }
+
+                // Update phase increments for the new speed
+                t_float abs_speed = fabsf(x->speed);
+                x->read_phase_inc = (uint64_t)(abs_speed * 4294967296.0);
+                x->write_phase_inc = (uint64_t)(abs_speed * 4294967296.0);
             }
 
             t_sample play_gain = 1.0;
