@@ -167,6 +167,14 @@
 #X obj 878 132 list prepend volume;
 #X obj 878 40 r knob3;
 #X obj 878 156 s looper-mix-3;
+#X obj 879 211 r knob4;
+#X floatatom 879 235 5 0 0 0 - - - 0;
+#X obj 879 258 - 0.5;
+#X floatatom 879 306 5 0 0 0 - - - 0;
+#X obj 879 386 s looper-msg;
+#X obj 891 359 s screenLine4;
+#X msg 879 329 speed \$1;
+#X obj 879 282 * 4;
 #X connect 0 0 1 0;
 #X connect 1 0 46 0;
 #X connect 2 0 87 0;
@@ -323,3 +331,10 @@
 #X connect 164 0 165 0;
 #X connect 165 0 167 0;
 #X connect 166 0 162 0;
+#X connect 168 0 169 0;
+#X connect 169 0 170 0;
+#X connect 170 0 175 0;
+#X connect 171 0 174 0;
+#X connect 174 0 173 0;
+#X connect 174 0 172 0;
+#X connect 175 0 171 0;
