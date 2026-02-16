@@ -341,12 +341,13 @@ t_int *looper_perform(t_int *w) {
 
             // For normal and reverse speed, write directly without interpolation
             if (fabsf(abs_speed - 1.0f) < 0.001f) {
-                x->bufferL[i1] = x->bufferL[i1] + (in_l * rec_gain);
-                x->bufferR[i1] = x->bufferR[i1] + (in_r * rec_gain);
+                // Simple additive overdub - just add input, don't re-record playback
+                x->bufferL[i1] += in_l * rec_gain;
+                x->bufferR[i1] += in_r * rec_gain;
             } else {
                 // For other speeds, use write-side interpolation with gain compensation
-                // Gain compensation: at slower speeds we visit same positions multiple times
-                t_float write_gain = rec_gain / abs_speed;
+                // Gain compensation: multiply by speed (slower = less gain per write, faster = more)
+                t_float write_gain = rec_gain * abs_speed;
 
                 // Distribute sample across neighboring positions using cubic weighting
                 // Calculate hermite basis function weights for writing
