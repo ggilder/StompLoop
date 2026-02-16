@@ -45,6 +45,7 @@ typedef struct _looper {
     size_t fade_pos;
     bool fading;
     bool fade_in; // true if fading in, false if fading out
+    t_sample fade_current_ratio; // Cached fade ratio for oversamples
 
     t_outlet *status_out;
 
@@ -333,7 +334,7 @@ t_int *looper_perform(t_int *w) {
             t_sample play_gain = 1.0;
             t_sample rec_gain = 1.0;
 
-            // Handle state transitions with fading (only update fade_pos on first iteration)
+            // Handle state transitions with fading
             if (x->fading) {
                 // Fade complete
                 if (x->fade_pos >= x->fade_samples) {
@@ -341,9 +342,17 @@ t_int *looper_perform(t_int *w) {
                     x->state = x->target_state;
                     logpost(x, PD_DEBUG, "looper fade complete, new state %d", x->state);
                 } else {
-                    // Smoother fade using cosine curve
-                    t_sample fade_ratio = 0.5 * (1 - cosf((t_float)x->fade_pos / (t_float)x->fade_samples * M_PI));
-                    if (os == 0) x->fade_pos++;  // Only increment once per external sample
+                    // Compute fade_ratio once per external sample (before incrementing)
+                    // This ensures all oversamples use same gain, avoiding amplitude modulation
+                    t_sample fade_ratio;
+                    if (os == 0) {
+                        fade_ratio = 0.5 * (1 - cosf((t_float)x->fade_pos / (t_float)x->fade_samples * M_PI));
+                        x->fade_current_ratio = fade_ratio;  // Store for other oversamples
+                        x->fade_pos++;  // Increment once per external sample
+                    } else {
+                        fade_ratio = x->fade_current_ratio;  // Reuse for os > 0
+                    }
+
                     if (x->fade_in) {
                         if (x->target_state == LOOPER_RECORDING) {
                             rec_gain = fade_ratio;
