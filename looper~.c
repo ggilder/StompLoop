@@ -411,7 +411,7 @@ t_int *looper_perform(t_int *w) {
 
                 // Write with gain compensation for speed
                 t_float abs_speed = fabsf(x->speed);
-                t_float write_gain = rec_gain * abs_speed / (t_float)OVERSAMPLE_FACTOR;
+                t_float write_gain = rec_gain * abs_speed;
 
                 x->bufferL[write_pos] += os_in_l * write_gain;
                 x->bufferR[write_pos] += os_in_r * write_gain;
