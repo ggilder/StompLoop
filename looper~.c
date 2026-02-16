@@ -361,26 +361,16 @@ t_int *looper_perform(t_int *w) {
         if (x->state == LOOPER_RECORDING) {
             t_float abs_speed = fabsf(x->speed);
 
-            // For normal and reverse speed, write directly without interpolation
-            if (fabsf(abs_speed - 1.0f) < 0.001f) {
-                // Simple additive overdub - just add input, don't re-record playback
-                x->bufferL[i1] += in_l * rec_gain;
-                x->bufferR[i1] += in_r * rec_gain;
-            } else {
-                // For other speeds, use write-side interpolation with gain compensation
-                // Gain compensation: multiply by speed (slower = less gain per write, faster = more)
-                t_float write_gain = rec_gain * abs_speed;
+            // Always write to nearest integer position for stability
+            // Write interpolation can create uneven energy distribution causing artifacts
+            size_t write_pos = (size_t)(x->read_pos + 0.5f); // round to nearest
+            if (write_pos >= x->loop_end) write_pos = 0;
 
-                // Use linear interpolation for writing (more stable than cubic)
-                t_float w1 = 1.0f - frac;
-                t_float w2 = frac;
+            // Gain compensation for speed
+            t_float write_gain = rec_gain * abs_speed;
 
-                x->bufferL[i1] += in_l * write_gain * w1;
-                x->bufferL[i2] += in_l * write_gain * w2;
-
-                x->bufferR[i1] += in_r * write_gain * w1;
-                x->bufferR[i2] += in_r * write_gain * w2;
-            }
+            x->bufferL[write_pos] += in_l * write_gain;
+            x->bufferR[write_pos] += in_r * write_gain;
         }
 
         outL[i] = play_l;
